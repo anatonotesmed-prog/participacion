@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Temporizador de sesión</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:#0b1120;color:#e2e8f0;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;min-height:100vh}
+.num{font-family:"Helvetica Neue",Helvetica,"Arial Black",Arial,sans-serif;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:-.03em;line-height:1}
+.ring{transition:stroke-dashoffset .15s linear,stroke .3s}
+button{transition:transform .08s,filter .2s}button:active{transform:scale(.96)}
+input{background:#0f172a;border:1px solid #334155;border-radius:.75rem;padding:.5rem .75rem;color:#f1f5f9;width:100%}
+</style>
+</head>
+<body>
+
+<!-- PANTALLA PROYECTADA -->
+<div id="disp" class="hidden h-screen flex-col gap-4 p-4">
+  <header class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-black tracking-tight text-slate-100">Temporizador de sesión</h1>
+      <p class="text-2xl text-slate-400">Turno de: <span id="who" class="font-bold text-emerald-400"></span></p>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="openM('mset')" class="rounded-xl bg-slate-800 px-4 py-2 font-bold hover:bg-slate-700">⚙ Ajustes</button>
+      <button onclick="openRemote()" class="rounded-xl bg-slate-800 px-4 py-2 font-bold hover:bg-slate-700">📱 Control remoto</button>
+    </div>
+  </header>
+
+  <main class="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-2">
+    <section class="relative min-h-[40vh] overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80">
+      <h2 class="absolute left-0 right-0 top-5 text-center text-2xl font-extrabold uppercase tracking-widest text-emerald-400">Tiempo global</h2>
+      <div class="absolute inset-0">
+        <svg id="sg" class="absolute inset-0 h-full w-full"><rect fill="none" stroke="#1e293b" stroke-width="14"/><rect id="rg" fill="none" stroke="#34d399" stroke-width="14" stroke-linecap="round" pathLength="1" stroke-dasharray="1"/></svg>
+        <div id="g" class="num absolute inset-0 flex items-center justify-center text-white" style="font-size:min(15.5vw,30vh)">00:00</div>
+      </div>
+    </section>
+    <section class="relative min-h-[40vh] overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80">
+      <h2 class="absolute left-0 right-0 top-5 text-center text-2xl font-extrabold uppercase tracking-widest text-indigo-400">Turno actual</h2>
+      <div class="absolute inset-0">
+        <svg id="st" class="absolute inset-0 h-full w-full"><rect fill="none" stroke="#1e293b" stroke-width="14"/><rect id="rt" fill="none" stroke="#818cf8" stroke-width="14" stroke-linecap="round" pathLength="1" stroke-dasharray="1"/></svg>
+        <div id="t" class="num absolute inset-0 flex items-center justify-center text-white" style="font-size:min(15.5vw,30vh)">00:00</div>
+      </div>
+    </section>
+  </main>
+
+  <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <button id="go" onclick="act({a:'toggle'})" class="rounded-2xl bg-emerald-500 py-5 text-2xl font-black text-slate-950 hover:brightness-110">▶ INICIAR</button>
+    <button onclick="act({a:'next'})" class="rounded-2xl bg-indigo-500 py-5 text-2xl font-black text-white hover:brightness-110">⏭ PASAR TURNO</button>
+    <button onclick="act({a:'reset'})" class="rounded-2xl bg-slate-700 py-5 text-2xl font-black hover:brightness-110">↺ REINICIAR</button>
+    <button id="mu" onclick="act({a:'mute'})" class="rounded-2xl bg-slate-700 py-5 text-2xl font-black hover:brightness-110">🔊 SONIDO</button>
+  </div>
+
+  <footer id="bar" class="flex max-h-32 flex-wrap justify-center gap-2 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900/80 p-3"></footer>
+</div>
+
+<!-- CONSOLA DEL TELÉFONO -->
+<div id="ctl" class="hidden min-h-screen select-none flex-col gap-3 p-3" style="touch-action:manipulation">
+  <div class="flex items-center justify-between"><span class="text-lg font-black text-slate-100">Control remoto</span><span id="cst" class="rounded-full bg-amber-500/20 px-3 py-1 text-sm font-bold text-amber-300">Conectando…</span></div>
+  <div class="rounded-3xl border border-slate-800 bg-slate-900 p-4">
+    <div class="text-xs font-bold uppercase tracking-widest text-slate-400">Turno de</div>
+    <div id="cw" class="truncate text-3xl font-black text-emerald-400">—</div>
+    <div class="mt-2 text-center"><div class="text-xs font-bold uppercase text-indigo-400">Turno</div><div id="ct" class="num" style="font-size:min(25vw,18vh)">--:--</div></div>
+    <div class="mt-2 text-center"><div class="text-xs font-bold uppercase text-emerald-400">Global</div><div id="cg" class="num text-slate-300" style="font-size:min(15vw,10vh)">--:--</div></div>
+    <div class="mt-3 h-3 overflow-hidden rounded-full bg-slate-800"><div id="cpb" class="h-full rounded-full bg-indigo-400" style="width:0%;transition:width .15s linear"></div></div>
+  </div>
+  <button id="cgo" onclick="act({a:'toggle'})" class="rounded-3xl bg-emerald-500 py-10 text-5xl font-black text-slate-950" style="min-height:20vh">▶ INICIAR</button>
+  <button onclick="act({a:'next'})" class="rounded-3xl bg-indigo-500 py-8 text-3xl font-black" style="min-height:14vh">⏭ PASAR TURNO</button>
+  <div class="grid grid-cols-3 gap-3">
+    <button onclick="act({a:'add',ms:-30000})" class="rounded-2xl bg-slate-700 py-5 text-xl font-black">−30 s</button>
+    <button onclick="act({a:'add',ms:30000})" class="rounded-2xl bg-slate-700 py-5 text-xl font-black">+30 s</button>
+    <button id="cmu" onclick="act({a:'mute'})" class="rounded-2xl bg-slate-700 py-5 text-base font-black">🔊 SONIDO</button>
+  </div>
+  <button id="crs" onclick="rst()" class="rounded-2xl bg-slate-800 py-5 text-xl font-black text-rose-300">↺ REINICIAR</button>
+  <div class="text-xs font-bold uppercase tracking-widest text-slate-400">Participantes (toca para dar el turno)</div>
+  <div id="cbar" class="grid grid-cols-2 gap-2 pb-4"></div>
+</div>
+
+<!-- MODAL AJUSTES -->
+<div id="mset" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
+  <div class="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-6">
+    <h3 class="mb-4 text-2xl font-black">Ajustes</h3>
+    <div class="grid grid-cols-2 gap-4 text-sm font-bold text-slate-300">
+      <div>Tiempo global<div class="mt-1 flex gap-2"><input id="gm" type="number" min="0" max="999" placeholder="min"><input id="gs" type="number" min="0" max="59" placeholder="seg"></div></div>
+      <div>Tiempo por turno<div class="mt-1 flex gap-2"><input id="tm" type="number" min="0" max="999" placeholder="min"><input id="ts" type="number" min="0" max="59" placeholder="seg"></div></div>
+    </div>
+    <div class="mt-4 text-sm font-bold text-slate-300">Participantes (1–20)<input id="np" type="number" min="1" max="20" class="mt-1" oninput="names()"></div>
+    <div id="nl" class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2"></div>
+    <div class="mt-6 flex justify-end gap-2">
+      <button onclick="closeM('mset')" class="rounded-xl bg-slate-700 px-5 py-3 font-bold">Cancelar</button>
+      <button onclick="saveSet()" class="rounded-xl bg-emerald-500 px-5 py-3 font-black text-slate-950">Guardar y reiniciar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONTROL REMOTO -->
+<div id="mrem" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
+  <div class="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 text-center">
+    <h3 class="mb-1 text-2xl font-black">Control remoto</h3>
+    <p class="mb-3 text-sm text-slate-400">Escanea con tu teléfono (misma cuenta u organización) para usarlo como consola.</p>
+    <canvas id="qr" class="mx-auto h-56 w-56 rounded-xl bg-white"></canvas>
+    <input id="lnk" class="mt-3 text-xs" oninput="drawQR()">
+    <p class="mt-1 text-xs text-slate-500">Si el enlace no es el de este artefacto, pega el del artefacto y añade #controller al final.</p>
+    <div class="mt-4 flex justify-center gap-2">
+      <button onclick="copyL()" class="rounded-xl bg-indigo-500 px-5 py-3 font-bold">Copiar enlace</button>
+      <button onclick="closeM('mrem')" class="rounded-xl bg-slate-700 px-5 py-3 font-bold">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const ctrl=/mode=controller/.test(location.search)||location.hash==='#controller';
+const CIRC=2*Math.PI*130;
+let cfg={G:1800000,T:120000,names:['Participante 1','Participante 2','Participante 3','Participante 4']};
+try{const c=JSON.parse(localStorage.getItem('tmr-cfg'));if(c&&c.names&&c.names.length)cfg=c}catch(e){}
+let S={g:cfg.G,t:cfg.T,cur:0,run:false,mute:false,ts:Date.now(),cfg};
+let got=!ctrl,rm=null,bc=null,A=null,lastSec=-1,lastKey='';
+
+/* ---------- Audio ---------- */
+function ac(){try{if(!A)A=new(window.AudioContext||window.webkitAudioContext)();if(A.state==='suspended')A.resume()}catch(e){}return A}
+function tone(f,d,v,type,when){if(S.mute)return;const a=ac();if(!a)return;const o=a.createOscillator(),g=a.createGain(),t=a.currentTime+(when||0);
+  o.type=type||'sine';o.frequency.value=f;g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+d+.02)}
+const tock=s=>tone(s%2?950:720,.05,.07,'square');
+const warn=()=>tone(1300,.14,.22,'sine');
+const endTurn=()=>[0,.25,.5].forEach(w=>tone(1000,.18,.3,'square',w));
+const endAll=()=>[0,.4,.8,1.2].forEach(w=>tone(600,.3,.35,'sawtooth',w));
+addEventListener('pointerdown',()=>{if(!ctrl)ac()},{once:true});
+
+/* ---------- Estado ---------- */
+function push(){S.ts=Date.now();const m=JSON.parse(JSON.stringify(S));
+  try{rm&&rm.emit('state',m)}catch(e){}try{bc&&bc.postMessage({k:'state',d:m})}catch(e){}}
+function apply(c){
+  const n=S.cfg.names.length;
+  if(c.a==='toggle'){if(S.g>0)S.run=!S.run}
+  else if(c.a==='next'){S.cur=(S.cur+1)%n;S.t=S.cfg.T}
+  else if(c.a==='reset'){S.g=S.cfg.G;S.t=S.cfg.T;S.cur=0;S.run=false}
+  else if(c.a==='mute'){S.mute=!S.mute}
+  else if(c.a==='add'){S.t=Math.max(1000,S.t+c.ms)}
+  else if(c.a==='sel'&&c.i>=0&&c.i<n){S.cur=c.i;S.t=S.cfg.T}
+  push();render();
+}
+function act(c){if(ctrl&&c.a!=='hello'&&navigator.vibrate){try{navigator.vibrate(35)}catch(e){}}
+  if(!ctrl){apply(c);return}
+  try{rm&&Promise.resolve(rm.emit('cmd',c)).catch(()=>{window.cerr='Sin permiso: usa la cuenta dueña';$('cst').textContent=window.cerr})}catch(e){}try{bc&&bc.postMessage({k:'cmd',d:c})}catch(e){}
+}
+
+/* ---------- Bucle (solo pantalla) ---------- */
+let last=Date.now();
+setInterval(()=>{
+  const n=Date.now(),d=n-last;last=n;
+  if(!ctrl&&S.run){
+    S.g-=d;S.t-=d;S.ts=n;
+    const sec=Math.ceil(S.t/1000);
+    if(sec!==lastSec){lastSec=sec;if(sec>0&&sec<=5)warn();else tock(sec)}
+    if(S.g<=0){S.g=0;S.t=Math.max(0,S.t);S.run=false;endAll();push()}
+    else if(S.t<=0){endTurn();S.cur=(S.cur+1)%S.cfg.names.length;S.t=S.cfg.T;push()}
+  }
+  render();
+},100);
+setInterval(()=>{if(!ctrl&&S.run)push()},1000);
+
+/* ---------- Render ---------- */
+const fmt=ms=>{const s=Math.ceil(Math.max(0,ms)/1000);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
+const rc=f=>f<.1?'#fb7185':f<.25?'#fbbf24':'#818cf8';
+function chips(id,v){
+  const key=id+JSON.stringify([v.cfg.names,v.cur]);if(key===lastKey+id&&0)return;
+  const el=$(id);if(el.dataset.k===key)return;el.dataset.k=key;el.innerHTML='';
+  v.cfg.names.forEach((nm,i)=>{const b=document.createElement('button');
+    b.className=(id==='cbar'?'truncate rounded-2xl px-3 py-5 text-lg font-extrabold ':'rounded-full px-4 py-2 font-extrabold ')+(i===v.cur?'bg-emerald-400 text-slate-950 ring-4 ring-emerald-300/40'+(id==='cbar'?'':' scale-110'):'bg-slate-800 text-slate-300 hover:bg-slate-700');
+    b.textContent=(i+1)+'. '+nm;b.onclick=()=>act({a:'sel',i});el.appendChild(b)});
+}
+function render(){
+  const o=ctrl&&S.run?Date.now()-S.ts:0,v={...S,g:Math.max(0,S.g-o),t:Math.max(0,S.t-o)};
+  const nm=v.cfg.names[v.cur]||'',fg=v.cfg.G?v.g/v.cfg.G:0,ft=v.cfg.T?v.t/v.cfg.T:0;
+  if(!ctrl){
+    $('g').textContent=fmt(v.g);$('t').textContent=fmt(v.t);$('who').textContent=nm;
+    $('rg').setAttribute('stroke-dashoffset',1-Math.min(1,fg));
+    $('rt').setAttribute('stroke-dashoffset',1-Math.min(1,ft));$('rt').style.stroke=rc(ft);
+    $('go').textContent=v.run?'⏸ PAUSAR':'▶ INICIAR';$('go').className=$('go').className.replace(/bg-\w+-500/,v.run?'bg-amber-500':'bg-emerald-500');
+    $('mu').textContent=v.mute?'🔇 MUTE':'🔊 SONIDO';chips('bar',v);
+  }else if(got){
+    $('cg').textContent=fmt(v.g);$('ct').textContent=fmt(v.t);$('cw').textContent=nm;
+    $('cpb').style.width=(Math.min(1,ft)*100)+'%';$('cpb').style.background=rc(ft);$('ct').style.color=ft<.25?rc(ft):'';
+    $('cgo').textContent=v.run?'⏸ PAUSAR':'▶ INICIAR';$('cgo').className=$('cgo').className.replace(/bg-\w+-500/,v.run?'bg-amber-500':'bg-emerald-500');
+    $('cmu').textContent=v.mute?'🔇 MUTE':'🔊 SONIDO';chips('cbar',v);
+    $('cst').textContent=window.cerr||'Conectado';$('cst').className='rounded-full bg-emerald-500/20 px-3 py-1 font-bold text-emerald-300';
+  }
+}
+
+/* ---------- Consola: reinicio con doble toque ---------- */
+let rtm=0;function rst(){const b=$('crs');if(rtm){clearTimeout(rtm);rtm=0;b.textContent='↺ REINICIAR';act({a:'reset'});return}
+  b.textContent='¿SEGURO? TOCA OTRA VEZ';rtm=setTimeout(()=>{rtm=0;b.textContent='↺ REINICIAR'},2500)}
+if(ctrl)setTimeout(()=>{if(!got)$('cst').textContent=window.cerr||'Sin conexión con la pantalla'},6000);
+
+/* ---------- Modales ---------- */
+function openM(id){if(id==='mset'){const c=S.cfg;$('gm').value=Math.floor(c.G/60000);$('gs').value=Math.round(c.G/1000)%60;$('tm').value=Math.floor(c.T/60000);$('ts').value=Math.round(c.T/1000)%60;$('np').value=c.names.length;names(c.names)}
+  $(id).classList.remove('hidden');$(id).classList.add('flex')}
+function closeM(id){$(id).classList.add('hidden');$(id).classList.remove('flex')}
+function names(src){
+  const n=Math.min(20,Math.max(1,+$('np').value||1)),old=src||[...$('nl').querySelectorAll('input')].map(i=>i.value);
+  $('nl').innerHTML='';for(let i=0;i<n;i++){const e=document.createElement('input');e.value=old[i]||'Participante '+(i+1);e.maxLength=30;$('nl').appendChild(e)}
+}
+function saveSet(){
+  const num=(id,mx)=>Math.min(mx,Math.max(0,Math.floor(+$(id).value||0)));
+  const G=(num('gm',999)*60+num('gs',59))*1000||60000,T=(num('tm',999)*60+num('ts',59))*1000||30000;
+  const nl=[...$('nl').querySelectorAll('input')].map((i,k)=>i.value.trim()||'Participante '+(k+1));
+  cfg={G,T,names:nl};try{localStorage.setItem('tmr-cfg',JSON.stringify(cfg))}catch(e){}
+  S={g:G,t:T,cur:0,run:false,mute:S.mute,ts:Date.now(),cfg};lastSec=-1;push();render();closeM('mset');
+}
+function openRemote(){$('lnk').value='https://claude.ai/artifact/DzvBivTeoKWefzDhAiM9R2#controller';openM('mrem');drawQR()}
+function drawQR(){
+  const cv=$('qr'),x=cv.getContext('2d');
+  try{const q=qrcode(0,'M');q.addData($('lnk').value);q.make();const n=q.getModuleCount(),s=8;cv.width=cv.height=(n+8)*s;
+    x.fillStyle='#fff';x.fillRect(0,0,cv.width,cv.height);x.fillStyle='#000';
+    for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(q.isDark(r,c))x.fillRect((c+4)*s,(r+4)*s,s,s)}
+  catch(e){x.clearRect(0,0,cv.width,cv.height)}
+}
+function copyL(){const i=$('lnk');i.select();try{navigator.clipboard.writeText(i.value)}catch(e){document.execCommand('copy')}}
+
+/* ---------- Arranque y sincronización ---------- */
+$(ctrl?'ctl':'disp').classList.replace('hidden','flex');
+try{bc=new BroadcastChannel('tmr-sync');bc.onmessage=e=>{const m=e.data;
+  if(ctrl&&m.k==='state'){S=m.d;got=true;render()}
+  else if(!ctrl&&m.k==='cmd'){m.d.a==='hello'?push():apply(m.d)}}}catch(e){}
+(async()=>{
+  try{if(window.claude&&claude.use)rm=await claude.use('room')}catch(e){}
+  if(!rm){if(ctrl){window.cerr='Sin canal: inicia sesión en claude.ai';$('cst').textContent=window.cerr}return}
+  rm.on(ctrl?'state':'cmd',m=>{if(m.isMe)return;
+    if(ctrl){S=m.data;got=true;render()}
+    else if(m.data&&m.data.a==='hello')push();else if(m.data)apply(m.data)});
+  if(ctrl){const hi=()=>{if(!got)act({a:'hello'})};hi();setInterval(hi,2000)}else push();
+})();
+if(ctrl){const hi=()=>{if(!got)act({a:'hello'})};setTimeout(hi,500)}
+function fit(){['sg','st'].forEach(id=>{const s=$(id),r=s.parentElement.getBoundingClientRect(),w=r.width,h=r.height,m=14;s.setAttribute('viewBox','0 0 '+w+' '+h);
+  s.querySelectorAll('rect').forEach(e=>{e.setAttribute('x',m);e.setAttribute('y',m);e.setAttribute('width',Math.max(0,w-2*m));e.setAttribute('height',Math.max(0,h-2*m));e.setAttribute('rx',56)})})}
+if(!ctrl){fit();addEventListener('resize',fit);try{const ro=new ResizeObserver(fit);ro.observe($('sg').parentElement);ro.observe($('st').parentElement)}catch(e){}}
+render();
+</script>
+</body>
+</html>
